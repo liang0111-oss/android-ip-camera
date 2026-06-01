@@ -15,7 +15,7 @@ Repo: https://github.com/DigitallyRefined/android-ip-camera.git
 Builds:
   - versionName: 0.3.1
     versionCode: 31
-    commit: ca409b8812375eaacea4cffd3ddd65686efe4feb
+    commit: bc65e7e9837ecdc3e056d6b4e9de60e57be91d12
     subdir: app
     gradle:
       - yes
