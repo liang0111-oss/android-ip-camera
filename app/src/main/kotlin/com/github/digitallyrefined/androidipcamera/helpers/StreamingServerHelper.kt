@@ -41,7 +41,7 @@ import javax.net.ssl.SSLServerSocket
 
 class StreamingServerHelper(
     private val context: Context,
-    private val streamPort: Int = 4444,
+    private val streamPort: Int = 6666,
     private val maxClients: Int = 3,
     private val maxAuthenticatedClients: Int = 10, // Higher limit for authenticated users
     private val onLog: (String) -> Unit = {},

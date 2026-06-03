@@ -88,7 +88,7 @@ class StreamingService : LifecycleService() {
 
     companion object {
         private const val TAG = "StreamingService"
-        private const val STREAM_PORT = 4444
+        private const val DEFAULT_STREAM_PORT = 6666
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "streaming_service_channel"
         private const val PREF_LAST_CAMERA_FACING = "last_camera_facing"
@@ -316,10 +316,20 @@ class StreamingService : LifecycleService() {
         }
     }
 
+    private fun getStreamPort(): Int {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        return try {
+            (prefs.getString("stream_port", DEFAULT_STREAM_PORT.toString()) ?: DEFAULT_STREAM_PORT.toString()).toInt()
+        } catch (e: NumberFormatException) {
+            DEFAULT_STREAM_PORT
+        }
+    }
+
     private fun initServer() {
         if (streamingServerHelper == null) {
             streamingServerHelper = StreamingServerHelper(
                 this,
+                streamPort = getStreamPort(),
                 onLog = { message ->
                     Log.i(TAG, "StreamingServer: $message")
                     onLog?.invoke(message)
@@ -342,7 +352,7 @@ class StreamingService : LifecycleService() {
             )
         }
         streamingServerHelper?.startStreamingServer()
-        Log.i(TAG, "Requested HTTPS server start on port $STREAM_PORT")
+        Log.i(TAG, "Requested server start on port ${getStreamPort()}")
     }
 
     private fun launchMain(block: () -> Unit) {

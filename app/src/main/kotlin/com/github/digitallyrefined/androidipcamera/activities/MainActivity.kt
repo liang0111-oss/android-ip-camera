@@ -151,7 +151,11 @@ class MainActivity : AppCompatActivity() {
 
         val ipAddressText = findViewById<TextView>(R.id.ipAddressText)
         val ipAddress = getLocalIpAddress()
-        ipAddressText.text = "https://$ipAddress:$STREAM_PORT"
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val enableHttps = prefs.getBoolean("enable_https", true)
+        val port = prefs.getString("stream_port", "6666") ?: "6666"
+        val scheme = if (enableHttps) "https" else "http"
+        ipAddressText.text = "$scheme://$ipAddress:$port"
         showNoClientMessage(true)
 
         findViewById<ImageButton>(R.id.settingsButton).setOnClickListener {
@@ -179,6 +183,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Refresh URL display with current settings
+        val ipAddressText = findViewById<TextView>(R.id.ipAddressText)
+        val ipAddress = getLocalIpAddress()
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val enableHttps = prefs.getBoolean("enable_https", true)
+        val port = prefs.getString("stream_port", "6666") ?: "6666"
+        val scheme = if (enableHttps) "https" else "http"
+        ipAddressText.text = "$scheme://$ipAddress:$port"
         if (isBound && !userHiddenPreview) {
             streamingService?.setPreviewSurface(viewBinding.viewFinder.surfaceProvider)
         }
@@ -350,7 +362,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
-        private const val STREAM_PORT = 4444
+        private const val DEFAULT_STREAM_PORT = 6666
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(
