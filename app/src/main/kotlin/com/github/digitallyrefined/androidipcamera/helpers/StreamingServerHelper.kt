@@ -185,7 +185,7 @@ class StreamingServerHelper(
                       }
                       return@launch
                   }
-                  onLog("Server started on port $streamPort (HTTP)"))
+                  onLog("Server started on port $streamPort (HTTP)")
                   // Clear the starting flag now that server is running
                   synchronized(this@StreamingServerHelper) {
                       isStarting = false

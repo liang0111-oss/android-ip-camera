@@ -35,8 +35,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
-import com.github.digitallyrefined.androidipcamera.helpers.StreamingServerHelper
-import com.github.digitallyrefined.androidipcamera.helpers.SecureStorage
+import com.github.digitallyrefined.androidipcamera.helpers.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
