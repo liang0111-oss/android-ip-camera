@@ -282,23 +282,9 @@ class StreamingServerHelper(
             val rawPassword = secureStorage.getSecureString(SecureStorage.KEY_PASSWORD, "") ?: ""
 
             // SECURITY: Authentication is now MANDATORY for all connections
-            // Validate stored credentials - require both username and password
-            val username = InputValidator.validateAndSanitizeUsername(rawUsername)
-            val password = InputValidator.validateAndSanitizePassword(rawPassword)
-
-            if (username == null || password == null || username.isEmpty() || password.isEmpty()) {
-                // CRITICAL: No valid credentials configured - reject all connections
-                recordFailedAttempt(clientIp)
-                writer.print("HTTP/1.1 403 Forbidden\r\n")
-                writer.print("Content-Type: text/plain\r\n")
-                writer.print("Connection: close\r\n\r\n")
-                writer.print("SECURITY ERROR: Authentication credentials not properly configured.\r\n")
-                writer.print("Configure username and password in app settings.\r\n")
-                writer.flush()
-                socket.close()
-                onLog("SECURITY: Connection rejected - authentication credentials not configured")
-                return
-            }
+            // Validate stored credentials
+            val username = InputValidator.validateAndSanitizeUsername(rawUsername) ?: ""
+            val password = InputValidator.validateAndSanitizePassword(rawPassword) ?: ""
 
             // Read HTTP headers
             val headers = mutableListOf<String>()
@@ -308,88 +294,63 @@ class StreamingServerHelper(
                 headers.add(line!!)
             }
 
-            // SECURITY: Require Basic Authentication header for all requests
-            // Parse headers in a robust, case-insensitive way (RFC 7230: header field names are case-insensitive)
-            val authHeaderPair = headers.mapNotNull { hdr ->
-                val idx = hdr.indexOf(":")
-                if (idx == -1) return@mapNotNull null
-                val name = hdr.substring(0, idx).trim()
-                val value = hdr.substring(idx + 1).trim()
-                name to value
-            }.find { (name, value) ->
-                name.equals("Authorization", ignoreCase = true) && value.startsWith("Basic ", ignoreCase = true)
-            }
+            // If credentials configured, require Basic Auth
+            if (username.isNotEmpty() && password.isNotEmpty()) {
+                val authHeaderPair = headers.mapNotNull { hdr ->
+                    val idx = hdr.indexOf(":")
+                    if (idx == -1) return@mapNotNull null
+                    val name = hdr.substring(0, idx).trim()
+                    val value = hdr.substring(idx + 1).trim()
+                    name to value
+                }.find { (name, _) ->
+                    name.equals("Authorization", ignoreCase = true)
+                }
 
-            if (authHeaderPair == null) {
-                // Rate limiting ONLY applies to unauthenticated requests
-                if (isRateLimited(clientIp)) {
-                    writer.print("HTTP/1.1 429 Too Many Requests\r\n")
-                    writer.print("Retry-After: 30\r\n") // Reduced to 30 seconds for unauthenticated
-                    writer.print("Connection: close\r\n\r\n")
+                if (authHeaderPair == null) {
+                    writer.print("HTTP/1.1 401 Unauthorized\r\n")
+                    writer.print("WWW-Authenticate: Basic realm=\"Android IP Camera\"\r\n")
+                    writer.print("Content-Length: 0\r\n")
+                    writer.print("Connection: keep-alive\r\n\r\n")
                     writer.flush()
-                    socket.close()
-                    onLog("SECURITY: Rate limited unauthenticated request from $clientIp")
-                    Thread.sleep(100)
+                    onLog("Auth required: no Authorization header from $clientIp")
                     return
                 }
-                recordFailedAttempt(clientIp)
-                writer.print("HTTP/1.1 401 Unauthorized\r\n")
-                writer.print("WWW-Authenticate: Basic realm=\"Android IP Camera\"\r\n")
-                writer.print("Connection: close\r\n\r\n")
-                writer.print("Unauthorized. Check username and password in the app settings.\r\n")
-                writer.flush()
-                socket.close()
-                return
-            }
 
-            val authValue = authHeaderPair.second
-            val providedAuthEncoded = authValue.substringAfter("Basic ", "")
-            val providedAuth = try {
-                val decoded = Base64.decode(providedAuthEncoded, Base64.DEFAULT)
-                String(decoded)
-            } catch (e: IllegalArgumentException) {
-                // Malformed base64
-                if (isRateLimited(clientIp)) {
-                    writer.print("HTTP/1.1 429 Too Many Requests\r\n")
-                    writer.print("Retry-After: 30\r\n")
-                    writer.print("Connection: close\r\n\r\n")
+                val authValue = authHeaderPair.second
+                if (!authValue.startsWith("Basic ", ignoreCase = true)) {
+                    writer.print("HTTP/1.1 401 Unauthorized\r\n")
+                    writer.print("WWW-Authenticate: Basic realm=\"Android IP Camera\"\r\n")
+                    writer.print("Content-Length: 0\r\n")
+                    writer.print("Connection: keep-alive\r\n\r\n")
                     writer.flush()
-                    socket.close()
-                    onLog("SECURITY: Rate limited malformed auth attempt from $clientIp")
-                    Thread.sleep(100)
+                    onLog("Auth failed: invalid scheme from $clientIp")
                     return
                 }
-                recordFailedAttempt(clientIp)
-                writer.print("HTTP/1.1 401 Unauthorized\r\n")
-                writer.print("Connection: close\r\n\r\n")
-                writer.print("Unauthorized. Check username and password in the app settings.\r\n")
-                writer.flush()
-                socket.close()
-                onLog("SECURITY: Failed authentication attempt from $clientIp (malformed base64)")
-                return
-            }
 
-            if (providedAuth != "$username:$password") {
-                // Rate limiting ONLY applies to failed authentication attempts
-                if (isRateLimited(clientIp)) {
-                    writer.print("HTTP/1.1 429 Too Many Requests\r\n")
-                    writer.print("Retry-After: 30\r\n") // Reduced to 30 seconds for failed auth
-                    writer.print("Connection: close\r\n\r\n")
+                val providedAuthEncoded = authValue.substringAfter("Basic ", "")
+                val providedAuth = try {
+                    val decoded = Base64.decode(providedAuthEncoded, Base64.DEFAULT)
+                    String(decoded)
+                } catch (e: IllegalArgumentException) {
+                    writer.print("HTTP/1.1 401 Unauthorized\r\n")
+                    writer.print("WWW-Authenticate: Basic realm=\"Android IP Camera\"\r\n")
+                    writer.print("Content-Length: 0\r\n")
+                    writer.print("Connection: keep-alive\r\n\r\n")
                     writer.flush()
-                    socket.close()
-                    onLog("SECURITY: Rate limited failed auth attempt from $clientIp")
-                    Thread.sleep(100)
+                    onLog("Auth failed: malformed base64 from $clientIp")
                     return
                 }
-                recordFailedAttempt(clientIp)
-                writer.print("HTTP/1.1 401 Unauthorized\r\n")
-                writer.print("Connection: close\r\n\r\n")
-                writer.print("Unauthorized. Check username and password in the app settings.\r\n")
-                writer.flush()
-                socket.close()
-                onLog("SECURITY: Failed authentication attempt from $clientIp")
-                return
-            }
+
+                if (providedAuth != "$username:$password") {
+                    writer.print("HTTP/1.1 401 Unauthorized\r\n")
+                    writer.print("WWW-Authenticate: Basic realm=\"Android IP Camera\"\r\n")
+                    writer.print("Content-Length: 0\r\n")
+                    writer.print("Connection: keep-alive\r\n\r\n")
+                    writer.flush()
+                    onLog("Auth failed: wrong credentials from $clientIp")
+                    return
+                }
+            } // end auth check
 
             // Handle Control UI and Commands
             if (uri == "/" || uri == "") {
