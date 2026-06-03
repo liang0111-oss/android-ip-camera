@@ -176,63 +176,72 @@ class StreamingServerHelper(
               serverJob = CoroutineScope(Dispatchers.IO).launch {
               try {
                   val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-                  val secureStorage = SecureStorage(context)
-                  val certificatePath = prefs.getString("certificate_path", null)
+                  val enableHttps = prefs.getBoolean("enable_https", true)
+                  val bindAddress = InetAddress.getByName("0.0.0.0")
 
-                  val rawPassword = secureStorage.getSecureString(SecureStorage.KEY_CERT_PASSWORD, null)
-                  val certificatePassword = rawPassword?.let {
-                      if (it.isEmpty()) null else it.toCharArray()
-                  }
+                  // Certificate setup - only needed for HTTPS
+                  var finalCertificatePath: String? = null
+                  var finalCertificatePassword: CharArray? = null
+                  if (enableHttps) {
+                      val secureStorage = SecureStorage(context)
+                      val certificatePath = prefs.getString("certificate_path", null)
 
-                  // Certificate setup required - no defaults
-                  var finalCertificatePath = certificatePath
-                  var finalCertificatePassword = certificatePassword
+                      val rawPassword = secureStorage.getSecureString(SecureStorage.KEY_CERT_PASSWORD, null)
+                      val certificatePassword = rawPassword?.let {
+                          if (it.isEmpty()) null else it.toCharArray()
+                      }
 
-                  if (certificatePath == null) {
-                      // Use personal certificate from assets - requires password configuration
-                      try {
-                          val personalCertFile = File(context.filesDir, "personal_certificate.p12")
-                          if (!personalCertFile.exists()) {
-                              // Try to copy from assets first
-                              try {
-                                  context.assets.open("personal_certificate.p12").use { input ->
-                                      personalCertFile.outputStream().use { output ->
-                                          input.copyTo(output)
+                      finalCertificatePath = certificatePath
+                      finalCertificatePassword = certificatePassword
+
+                      if (certificatePath == null) {
+                          try {
+                              val personalCertFile = File(context.filesDir, "personal_certificate.p12")
+                              if (!personalCertFile.exists()) {
+                                  try {
+                                      context.assets.open("personal_certificate.p12").use { input ->
+                                          personalCertFile.outputStream().use { output ->
+                                              input.copyTo(output)
+                                          }
                                       }
+                                  } catch (assetException: Exception) {
+                                      Handler(Looper.getMainLooper()).post {
+                                          onLog("Certificate not found.")
+                                          Toast.makeText(context,
+                                              "Certificate missing, reset app to generate a new certificate",
+                                              Toast.LENGTH_LONG).show()
+                                      }
+                                      return@launch
                                   }
-                              } catch (assetException: Exception) {
-                                  // Certificate not in assets - provide helpful error
-                                  Handler(Looper.getMainLooper()).post {
-                                      onLog("Certificate not found.")
-                                      Toast.makeText(context,
-                                          "Certificate missing, reset app to generate a new certificate",
-                                          Toast.LENGTH_LONG).show()
-                                  }
+                              }
+                              finalCertificatePath = personalCertFile.absolutePath
+
+                              if (finalCertificatePassword == null) {
                                   return@launch
                               }
-                          }
-                          finalCertificatePath = personalCertFile.absolutePath
 
-                          // Require certificate password to be configured
-                          if (finalCertificatePassword == null) {
+                          } catch (e: Exception) {
+                              Handler(Looper.getMainLooper()).post {
+                                  onLog("ERROR: Could not load certificate: ${e.message}")
+                                  Toast.makeText(context, "Certificate error, check certificate file and password in Settings", Toast.LENGTH_LONG).show()
+                              }
                               return@launch
                           }
-
-                      } catch (e: Exception) {
-                          Handler(Looper.getMainLooper()).post {
-                              onLog("ERROR: Could not load certificate: ${e.message}")
-                              Toast.makeText(context, "Certificate error, check certificate file and password in Settings", Toast.LENGTH_LONG).show()
-                          }
-                          return@launch
                       }
                   }
 
-                  val bindAddress = InetAddress.getByName("0.0.0.0")
-
                   serverSocket = try {
+                      if (!enableHttps) {
+                          // HTTP mode - plain ServerSocket, no TLS
+                          ServerSocket(streamPort, 50, bindAddress).apply {
+                              reuseAddress = true
+                              soTimeout = 30000
+                          }
+                      } else {
                       // Determine which certificate file to use
-                      val certFile = if (certificatePath != null) {
+                      val certFile = if (finalCertificatePath != null && prefs.getString("certificate_path", null) != null) {
                           // Custom certificate - copy from URI to local file
+                          val certificatePath = prefs.getString("certificate_path", null)!!
                           val uri = certificatePath.toUri()
                           val privateFile = File(context.filesDir, "certificate.p12")
                           if (privateFile.exists()) privateFile.delete()
@@ -283,14 +292,15 @@ class StreamingServerHelper(
                               return@launch
                           }
                       }
+                      } // end else (HTTPS branch)
                   } catch (e: Exception) {
                       Handler(Looper.getMainLooper()).post {
                           onLog("CRITICAL: Failed to create HTTPS server: ${e.message}")
-                          Toast.makeText(context, "Failed to start secure HTTPS server: ${e.message}", Toast.LENGTH_LONG).show()
+                          Toast.makeText(context, "Failed to start secure server: ${e.message}", Toast.LENGTH_LONG).show()
                       }
                       return@launch
                   }
-                  onLog("Server started on port $streamPort (${if (certificatePath != null) "HTTPS" else "HTTP"})")
+                  onLog("Server started on port $streamPort (${if (enableHttps) "HTTPS" else "HTTP"})")
                   // Clear the starting flag now that server is running
                   synchronized(this@StreamingServerHelper) {
                       isStarting = false

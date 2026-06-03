@@ -10,8 +10,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
+import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
+import androidx.preference.SwitchPreferenceCompat
 import com.github.digitallyrefined.androidipcamera.R
 import com.github.digitallyrefined.androidipcamera.helpers.InputValidator
 import com.github.digitallyrefined.androidipcamera.helpers.SecureStorage
@@ -32,6 +34,22 @@ class SettingsActivity : AppCompatActivity() {
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.preferences, rootKey)
+
+            // Toggle certificate settings visibility based on HTTPS switch
+            val certCategory = findPreference<PreferenceCategory>("certificate_settings")
+            val enableHttpsPref = findPreference<SwitchPreferenceCompat>("enable_https")
+
+            fun updateCertVisibility() {
+                val httpsEnabled = enableHttpsPref?.isChecked ?: true
+                certCategory?.isVisible = httpsEnabled
+            }
+
+            enableHttpsPref?.setOnPreferenceChangeListener { _, _ ->
+                // Post to ensure the new value is set before updating visibility
+                view?.post { updateCertVisibility() }
+                true
+            }
+            updateCertVisibility()
 
             // Set up certificate selection preference
             findPreference<Preference>("certificate_path")?.apply {

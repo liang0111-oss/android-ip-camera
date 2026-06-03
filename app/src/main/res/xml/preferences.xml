@@ -16,7 +16,17 @@
             android:singleLine="true" />
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="Certificate Settings">
+    <PreferenceCategory android:title="Connection Settings">
+        <SwitchPreferenceCompat
+            android:key="enable_https"
+            android:title="Enable HTTPS"
+            android:summary="Use TLS encryption. Disable for HTTP (no certificate needed)"
+            android:defaultValue="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="certificate_settings"
+        android:title="Certificate Settings">
         <Preference
             android:key="certificate_path"
             android:title="Custom TLS Certificate" android:summary="Select your own certificate" android:persistent="true" />
