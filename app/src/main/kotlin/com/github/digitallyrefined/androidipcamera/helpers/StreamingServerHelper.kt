@@ -11,7 +11,6 @@ import android.os.Looper
 import android.util.Base64
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import androidx.preference.PreferenceManager
 import com.github.digitallyrefined.androidipcamera.helpers.SecureStorage
 import kotlinx.coroutines.CoroutineScope
@@ -32,12 +31,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.KeyStore
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
-import javax.net.ssl.KeyManagerFactory
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLServerSocket
 
 class StreamingServerHelper(
     private val context: Context,
@@ -176,131 +171,21 @@ class StreamingServerHelper(
               serverJob = CoroutineScope(Dispatchers.IO).launch {
               try {
                   val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-                  val enableHttps = prefs.getBoolean("enable_https", true)
                   val bindAddress = InetAddress.getByName("0.0.0.0")
 
-                  // Certificate setup - only needed for HTTPS
-                  var finalCertificatePath: String? = null
-                  var finalCertificatePassword: CharArray? = null
-                  if (enableHttps) {
-                      val secureStorage = SecureStorage(context)
-                      val certificatePath = prefs.getString("certificate_path", null)
-
-                      val rawPassword = secureStorage.getSecureString(SecureStorage.KEY_CERT_PASSWORD, null)
-                      val certificatePassword = rawPassword?.let {
-                          if (it.isEmpty()) null else it.toCharArray()
-                      }
-
-                      finalCertificatePath = certificatePath
-                      finalCertificatePassword = certificatePassword
-
-                      if (certificatePath == null) {
-                          try {
-                              val personalCertFile = File(context.filesDir, "personal_certificate.p12")
-                              if (!personalCertFile.exists()) {
-                                  try {
-                                      context.assets.open("personal_certificate.p12").use { input ->
-                                          personalCertFile.outputStream().use { output ->
-                                              input.copyTo(output)
-                                          }
-                                      }
-                                  } catch (assetException: Exception) {
-                                      Handler(Looper.getMainLooper()).post {
-                                          onLog("Certificate not found.")
-                                          Toast.makeText(context,
-                                              "Certificate missing, reset app to generate a new certificate",
-                                              Toast.LENGTH_LONG).show()
-                                      }
-                                      return@launch
-                                  }
-                              }
-                              finalCertificatePath = personalCertFile.absolutePath
-
-                              if (finalCertificatePassword == null) {
-                                  return@launch
-                              }
-
-                          } catch (e: Exception) {
-                              Handler(Looper.getMainLooper()).post {
-                                  onLog("ERROR: Could not load certificate: ${e.message}")
-                                  Toast.makeText(context, "Certificate error, check certificate file and password in Settings", Toast.LENGTH_LONG).show()
-                              }
-                              return@launch
-                          }
-                      }
-                  }
-
                   serverSocket = try {
-                      if (!enableHttps) {
-                          // HTTP mode - plain ServerSocket, no TLS
-                          ServerSocket(streamPort, 50, bindAddress).apply {
-                              reuseAddress = true
-                              soTimeout = 30000
-                          }
-                      } else {
-                      // Determine which certificate file to use
-                      val certFile = if (finalCertificatePath != null && prefs.getString("certificate_path", null) != null) {
-                          // Custom certificate - copy from URI to local file
-                          val certificatePath = prefs.getString("certificate_path", null)!!
-                          val uri = certificatePath.toUri()
-                          val privateFile = File(context.filesDir, "certificate.p12")
-                          if (privateFile.exists()) privateFile.delete()
-                          context.contentResolver.openInputStream(uri)?.use { input ->
-                              privateFile.outputStream().use { output ->
-                                  input.copyTo(output)
-                              }
-                          } ?: throw IOException("Failed to open certificate file")
-                          privateFile
-                      } else {
-                          // Personal certificate
-                          File(finalCertificatePath!!)
+                      ServerSocket(streamPort, 50, bindAddress).apply {
+                          reuseAddress = true
+                          soTimeout = 30000
                       }
-
-                      certFile.inputStream().use { inputStream ->
-                          try {
-                              val keyStore = KeyStore.getInstance("PKCS12")
-                              keyStore.load(inputStream, finalCertificatePassword)
-                              val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
-                              keyManagerFactory.init(keyStore, finalCertificatePassword)
-                              val sslContext = SSLContext.getInstance("TLSv1.2")
-                              sslContext.init(keyManagerFactory.keyManagers, null, null)
-                              val sslServerSocketFactory = sslContext.serverSocketFactory
-                              (sslServerSocketFactory.createServerSocket(streamPort, 50, bindAddress) as SSLServerSocket).apply {
-                                  reuseAddress = true
-                                  enabledProtocols = arrayOf("TLSv1.3", "TLSv1.2")
-                                  enabledCipherSuites = arrayOf(
-                                      "TLS_AES_256_GCM_SHA384",
-                                      "TLS_AES_128_GCM_SHA256",
-                                      "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-                                      "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-                                  )
-                                  soTimeout = 30000
-                              }
-                          } catch (keystoreException: Exception) {
-                              Handler(Looper.getMainLooper()).post {
-                                  onLog("Certificate loading failed: ${keystoreException.message}")
-                                  val errorMsg = when {
-                                      keystoreException.message?.contains("password") == true ->
-                                          "Certificate password is incorrect, check Settings > Advanced Security"
-                                      keystoreException.message?.contains("keystore") == true ->
-                                          "Certificate file is corrupted or invalid, regenerate with setup.bat"
-                                      else ->
-                                          "Certificate error: ${keystoreException.message}"
-                                  }
-                                  Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
-                              }
-                              return@launch
-                          }
-                      }
-                      } // end else (HTTPS branch)
                   } catch (e: Exception) {
                       Handler(Looper.getMainLooper()).post {
-                          onLog("CRITICAL: Failed to create HTTPS server: ${e.message}")
-                          Toast.makeText(context, "Failed to start secure server: ${e.message}", Toast.LENGTH_LONG).show()
+                          onLog("CRITICAL: Failed to create server: ${e.message}")
+                          Toast.makeText(context, "Failed to start server: ${e.message}", Toast.LENGTH_LONG).show()
                       }
                       return@launch
                   }
-                  onLog("Server started on port $streamPort (${if (enableHttps) "HTTPS" else "HTTP"})")
+                  onLog("Server started on port $streamPort (HTTP)"))
                   // Clear the starting flag now that server is running
                   synchronized(this@StreamingServerHelper) {
                       isStarting = false
@@ -576,10 +461,18 @@ class StreamingServerHelper(
 
                     audioRecord.startRecording()
                     val pcmBuffer = ByteArray(bufferSize)
+                    // Read audio gain setting
+                    val audioGain = try {
+                        PreferenceManager.getDefaultSharedPreferences(context)
+                            .getString("audio_gain", "1")?.toFloatOrNull() ?: 1f
+                    } catch (_: Exception) { 1f }
                     try {
                         while (socket.isConnected && !socket.isClosed && appInForeground) {
                             val read = audioRecord.read(pcmBuffer, 0, pcmBuffer.size)
                             if (read <= 0) continue
+                            if (audioGain > 1f) {
+                                applyPcmGain(pcmBuffer, read, audioGain)
+                            }
                             writeChunk(outputStream, pcmBuffer, read)
                         }
                     } finally {
@@ -681,6 +574,18 @@ class StreamingServerHelper(
             } catch (closeException: Exception) {
                 // Ignore
             }
+        }
+    }
+
+    /** Apply gain to 16-bit PCM audio buffer in-place */
+    private fun applyPcmGain(buffer: ByteArray, length: Int, gain: Float) {
+        // length is in bytes; 16-bit samples = 2 bytes each
+        val sampleCount = length / 2
+        val bb = ByteBuffer.wrap(buffer, 0, length).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until sampleCount) {
+            val sample = bb.short
+            val amplified = (sample * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            bb.putShort(i * 2, amplified.toShort())
         }
     }
 

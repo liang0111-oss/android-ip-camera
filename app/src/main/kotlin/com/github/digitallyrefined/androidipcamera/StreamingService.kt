@@ -35,15 +35,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
-import com.github.digitallyrefined.androidipcamera.helpers.*
+import com.github.digitallyrefined.androidipcamera.helpers.StreamingServerHelper
+import com.github.digitallyrefined.androidipcamera.helpers.SecureStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.NetworkInterface
-import java.security.SecureRandom
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -274,45 +273,10 @@ class StreamingService : LifecycleService() {
 
     fun startStreamingServer() {
         try {
-            // Initialize Default Certificate Logic
-            val secureStorage = SecureStorage(this)
-            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-
-            if (CertificateHelper.certificateExists(this)) {
-                val existingCertPassword = secureStorage.getSecureString(SecureStorage.KEY_CERT_PASSWORD, null)
-                if (existingCertPassword.isNullOrEmpty()) {
-                    val certFile = File(filesDir, "personal_certificate.p12")
-                    if (certFile.exists()) certFile.delete()
-                    generateCertificateAndStart()
-                } else {
-                    initServer()
-                }
-            } else {
-                generateCertificateAndStart()
-            }
+            // No certificate needed for HTTP-only mode
+            initServer()
         } catch (e: Exception) {
             Log.e(TAG, "Error starting server: ${e.message}")
-        }
-    }
-
-    private fun generateCertificateAndStart() {
-        val randomPassword = generateRandomPassword()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val certFile = CertificateHelper.generateCertificate(this@StreamingService, randomPassword)
-            if (certFile != null) {
-                val secureStorage = SecureStorage(this@StreamingService)
-                secureStorage.putSecureString(SecureStorage.KEY_CERT_PASSWORD, randomPassword)
-                PreferenceManager.getDefaultSharedPreferences(this@StreamingService).edit().remove("certificate_path").apply()
-                kotlinx.coroutines.delay(100)
-                initServer()
-                launch(Dispatchers.Main) {
-                    Toast.makeText(this@StreamingService, "Certificate generated", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                launch(Dispatchers.Main) {
-                    Toast.makeText(this@StreamingService, "Failed to generate certificate", Toast.LENGTH_LONG).show()
-                }
-            }
         }
     }
 
@@ -666,28 +630,6 @@ class StreamingService : LifecycleService() {
             }
             toRemove.forEach { streamingServerHelper?.removeClient(it) }
         }
-    }
-
-    private fun generateRandomPassword(): String {
-        val random = SecureRandom()
-        val uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        val lowercase = "abcdefghijklmnopqrstuvwxyz"
-        val digits = "0123456789"
-        val allChars = uppercase + lowercase + digits
-        val password = StringBuilder().apply {
-            append(uppercase[random.nextInt(uppercase.length)])
-            append(lowercase[random.nextInt(lowercase.length)])
-            append(digits[random.nextInt(digits.length)])
-            repeat(9) { append(allChars[random.nextInt(allChars.length)]) }
-        }
-        val passwordArray = password.toString().toCharArray()
-        for (i in passwordArray.indices.reversed()) {
-            val j = random.nextInt(i + 1)
-            val temp = passwordArray[i]
-            passwordArray[i] = passwordArray[j]
-            passwordArray[j] = temp
-        }
-        return String(passwordArray)
     }
 
     private fun allPermissionsGranted() = arrayOf(Manifest.permission.CAMERA).all {

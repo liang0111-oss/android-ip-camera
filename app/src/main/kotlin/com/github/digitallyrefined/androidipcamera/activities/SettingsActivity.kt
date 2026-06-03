@@ -1,8 +1,6 @@
 package com.github.digitallyrefined.androidipcamera.activities
 
-import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -10,10 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
-import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.PreferenceManager
-import androidx.preference.SwitchPreferenceCompat
 import com.github.digitallyrefined.androidipcamera.R
 import com.github.digitallyrefined.androidipcamera.helpers.InputValidator
 import com.github.digitallyrefined.androidipcamera.helpers.SecureStorage
@@ -28,49 +23,14 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     class SettingsFragment : PreferenceFragmentCompat() {
-        companion object {
-            private const val PICK_CERTIFICATE_FILE = 1
-        }
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.preferences, rootKey)
 
-            // Toggle certificate settings visibility based on HTTPS switch
-            val certCategory = findPreference<PreferenceCategory>("certificate_settings")
-            val enableHttpsPref = findPreference<SwitchPreferenceCompat>("enable_https")
-
-            fun updateCertVisibility() {
-                val httpsEnabled = enableHttpsPref?.isChecked ?: true
-                certCategory?.isVisible = httpsEnabled
-            }
-
-            enableHttpsPref?.setOnPreferenceChangeListener { _, _ ->
-                // Post to ensure the new value is set before updating visibility
-                view?.post { updateCertVisibility() }
-                true
-            }
-            updateCertVisibility()
-
-            // Set up certificate selection preference
-            findPreference<Preference>("certificate_path")?.apply {
-                setOnPreferenceClickListener {
-                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                        type = "*/*"
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                    }
-                    startActivityForResult(
-                        Intent.createChooser(intent, "Select TLS Certificate"),
-                        PICK_CERTIFICATE_FILE
-                    )
-                    true
-                }
-            }
-
             val secureStorage = SecureStorage(requireContext())
 
-            // Configure username (optional - defaults available)
+            // Configure username
             findPreference<EditTextPreference>("username")?.apply {
-                // Load current value from secure storage
                 text = secureStorage.getSecureString(SecureStorage.KEY_USERNAME, "")
 
                 setOnPreferenceChangeListener { _, newValue ->
@@ -81,15 +41,13 @@ class SettingsActivity : AppCompatActivity() {
                             Toast.LENGTH_LONG).show()
                         return@setOnPreferenceChangeListener false
                     }
-                    // Store securely (empty string means use default)
                     secureStorage.putSecureString(SecureStorage.KEY_USERNAME, username)
                     true
                 }
             }
 
-            // Configure password (optional - defaults available)
+            // Configure password
             findPreference<EditTextPreference>("password")?.apply {
-                // Do not show the existing password when editing
                 setOnBindEditTextListener { editText ->
                     editText.text = null
                     editText.hint = "Enter new password"
@@ -97,8 +55,6 @@ class SettingsActivity : AppCompatActivity() {
 
                 setOnPreferenceChangeListener { _, newValue ->
                     val password = newValue.toString()
-
-                    // Empty input means "no change" – keep existing password
                     if (password.isEmpty()) {
                         return@setOnPreferenceChangeListener false
                     }
@@ -112,9 +68,7 @@ class SettingsActivity : AppCompatActivity() {
                         return@setOnPreferenceChangeListener false
                     }
 
-                    // Store securely only; do not persist plaintext in SharedPreferences
                     secureStorage.putSecureString(SecureStorage.KEY_PASSWORD, password)
-                    // Returning false prevents EditTextPreference from saving the plaintext
                     false
                 }
             }
@@ -133,85 +87,6 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
 
-            // Add validation for certificate password
-            findPreference<EditTextPreference>("certificate_password")?.apply {
-                // Do not pre-fill the existing certificate password when editing
-                setOnBindEditTextListener { editText ->
-                    editText.text = null
-                    editText.hint = "Enter certificate password"
-                }
-
-                setOnPreferenceChangeListener { _, newValue ->
-                    val password = newValue.toString()
-                    if (!InputValidator.isValidCertificatePassword(password)) {
-                        Toast.makeText(
-                            requireContext(),
-                            "Certificate password too long (max 256 characters)",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        return@setOnPreferenceChangeListener false
-                    }
-
-                    // Basic validation - check if password is not empty for certificate usage
-                    if (password.isEmpty()) {
-                        Toast.makeText(
-                            requireContext(),
-                            "Certificate password is required",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        return@setOnPreferenceChangeListener false
-                    }
-
-                    // Store securely only; do not persist plaintext in SharedPreferences
-                    secureStorage.putSecureString(SecureStorage.KEY_CERT_PASSWORD, password)
-                    Toast.makeText(
-                        requireContext(),
-                        "Certificate password saved, use 'Test Certificate Setup' to validate",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    // Returning false prevents EditTextPreference from saving the plaintext
-                    false
-                }
-            }
-
-            // Add test certificate functionality
-            findPreference<Preference>("test_certificate")?.apply {
-                setOnPreferenceClickListener {
-                    val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
-                    val certificatePath = prefs.getString("certificate_path", null)
-                    val certPassword = secureStorage.getSecureString(SecureStorage.KEY_CERT_PASSWORD, "")
-
-                    if (certPassword.isNullOrEmpty()) {
-                        Toast.makeText(requireContext(),
-                            "Certificate password not configured, set it above first",
-                            Toast.LENGTH_LONG).show()
-                        return@setOnPreferenceClickListener true
-                    }
-
-                    val isValid = if (certificatePath != null) {
-                        // Test custom certificate
-                        val certUri = android.net.Uri.parse(certificatePath)
-                        InputValidator.validateCertificateUsability(requireContext(), certUri, certPassword)
-                    } else {
-                        // Test built-in certificate
-                        InputValidator.validateBuiltInCertificate(requireContext(), certPassword)
-                    }
-
-                    if (isValid) {
-                        Toast.makeText(requireContext(),
-                            "✅ Certificate configuration is valid",
-                            Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(requireContext(),
-                            "❌ Certificate validation failed, check password and certificate file",
-                            Toast.LENGTH_LONG).show()
-                    }
-
-                    true
-                }
-            }
-
             // Add listener for camera resolution changes
             findPreference<Preference>("camera_resolution")?.apply {
                 setOnPreferenceChangeListener { preference, newValue ->
@@ -223,26 +98,24 @@ class SettingsActivity : AppCompatActivity() {
                         return@setOnPreferenceChangeListener false
                     }
 
-                    // Save the new value first
                     preferenceManager.sharedPreferences?.edit()?.apply {
                         putString("camera_resolution", resolution)
                         apply()
                     }
 
-                    // Delay the restart to ensure preference is saved
                     Handler(Looper.getMainLooper()).postDelayed({
                         val intent = Intent(requireActivity(), MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                         }
                         startActivity(intent)
                         Runtime.getRuntime().exit(0)
-                    }, 500) // 500ms delay
+                    }, 500)
 
                     true
                 }
             }
 
-            // Add listeners for zoom and scale changes (restart camera instead of app)
+            // Add listeners for zoom and scale changes
             findPreference<Preference>("camera_zoom")?.apply {
                 setOnPreferenceChangeListener { _, newValue ->
                     val zoom = newValue.toString()
@@ -254,12 +127,10 @@ class SettingsActivity : AppCompatActivity() {
                         return@setOnPreferenceChangeListener false
                     }
 
-                    // Send broadcast to restart camera with new zoom
                     val intent = Intent("com.github.digitallyrefined.androidipcamera.RESTART_CAMERA").apply {
                         setPackage(requireContext().packageName)
                     }
                     requireContext().sendBroadcast(intent)
-
                     true
                 }
             }
@@ -274,17 +145,15 @@ class SettingsActivity : AppCompatActivity() {
                         return@setOnPreferenceChangeListener false
                     }
 
-                    // Send broadcast to restart camera with new scale
                     val intent = Intent("com.github.digitallyrefined.androidipcamera.RESTART_CAMERA").apply {
                         setPackage(requireContext().packageName)
                     }
                     requireContext().sendBroadcast(intent)
-
                     true
                 }
             }
 
-            // Add listener for exposure changes (restart camera instead of app)
+            // Add listener for exposure changes
             findPreference<Preference>("camera_exposure")?.apply {
                 setOnPreferenceChangeListener { _, newValue ->
                     val exposure = (newValue as? String)?.toIntOrNull() ?: 0
@@ -295,17 +164,15 @@ class SettingsActivity : AppCompatActivity() {
                         return@setOnPreferenceChangeListener false
                     }
 
-                    // Send broadcast to restart camera with new exposure
                     val intent = Intent("com.github.digitallyrefined.androidipcamera.RESTART_CAMERA").apply {
                         setPackage(requireContext().packageName)
                     }
                     requireContext().sendBroadcast(intent)
-
                     true
                 }
             }
 
-            // Add listener for contrast changes (restart camera instead of app)
+            // Add listener for contrast changes
             findPreference<Preference>("camera_contrast")?.apply {
                 setOnPreferenceChangeListener { _, newValue ->
                     val contrast = (newValue as? String)?.toIntOrNull() ?: 0
@@ -316,56 +183,13 @@ class SettingsActivity : AppCompatActivity() {
                         return@setOnPreferenceChangeListener false
                     }
 
-                    // Send broadcast to restart camera with new contrast
                     val intent = Intent("com.github.digitallyrefined.androidipcamera.RESTART_CAMERA").apply {
                         setPackage(requireContext().packageName)
                     }
                     requireContext().sendBroadcast(intent)
-
                     true
                 }
             }
-        }
-
-        override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-            if (requestCode == PICK_CERTIFICATE_FILE && resultCode == Activity.RESULT_OK) {
-                data?.data?.let { uri ->
-                    val certificatePath = uri.toString()
-
-                    // Enhanced certificate validation
-                    if (!InputValidator.isValidCertificatePath(certificatePath)) {
-                        Toast.makeText(requireContext(),
-                            "Invalid certificate file, must be a valid .p12 or .pfx file under 10MB",
-                            Toast.LENGTH_LONG).show()
-                        return@let
-                    }
-
-                    // Validate certificate can actually be loaded and used
-                    val secureStorage = SecureStorage(requireContext())
-                    val certPassword = secureStorage.getSecureString(SecureStorage.KEY_CERT_PASSWORD, "")
-                    val certificateUri = Uri.parse(certificatePath)
-
-                    if (!InputValidator.validateCertificateUsability(requireContext(), certificateUri, certPassword)) {
-                        Toast.makeText(requireContext(),
-                            "Certificate cannot be loaded, check password and file integrity",
-                            Toast.LENGTH_LONG).show()
-                        return@let
-                    }
-
-                    // Store the certificate path
-                    preferenceManager.sharedPreferences?.edit()?.apply {
-                        putString("certificate_path", certificatePath)
-                        apply()
-                    }
-                    // Update the preference summary
-                    findPreference<Preference>("certificate_path")?.summary = certificatePath
-
-                    Toast.makeText(requireContext(),
-                        "Certificate configured, restart the app for changes to take effect",
-                        Toast.LENGTH_SHORT).show()
-                }
-            }
-            super.onActivityResult(requestCode, resultCode, data)
         }
     }
 }

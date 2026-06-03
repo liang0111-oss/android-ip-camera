@@ -152,10 +152,8 @@ class MainActivity : AppCompatActivity() {
         val ipAddressText = findViewById<TextView>(R.id.ipAddressText)
         val ipAddress = getLocalIpAddress()
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val enableHttps = prefs.getBoolean("enable_https", true)
         val port = prefs.getString("stream_port", "6666") ?: "6666"
-        val scheme = if (enableHttps) "https" else "http"
-        ipAddressText.text = "$scheme://$ipAddress:$port"
+        ipAddressText.text = "http://$ipAddress:$port"
         showNoClientMessage(true)
 
         findViewById<ImageButton>(R.id.settingsButton).setOnClickListener {
@@ -187,10 +185,8 @@ class MainActivity : AppCompatActivity() {
         val ipAddressText = findViewById<TextView>(R.id.ipAddressText)
         val ipAddress = getLocalIpAddress()
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val enableHttps = prefs.getBoolean("enable_https", true)
         val port = prefs.getString("stream_port", "6666") ?: "6666"
-        val scheme = if (enableHttps) "https" else "http"
-        ipAddressText.text = "$scheme://$ipAddress:$port"
+        ipAddressText.text = "http://$ipAddress:$port"
         if (isBound && !userHiddenPreview) {
             streamingService?.setPreviewSurface(viewBinding.viewFinder.surfaceProvider)
         }

@@ -17,11 +17,6 @@
     </PreferenceCategory>
 
     <PreferenceCategory android:title="Connection Settings">
-        <SwitchPreferenceCompat
-            android:key="enable_https"
-            android:title="Enable HTTPS"
-            android:summary="Use TLS encryption. Disable for HTTP (no certificate needed)"
-            android:defaultValue="true" />
         <EditTextPreference
             android:key="stream_port"
             android:title="Port"
@@ -31,22 +26,13 @@
             android:singleLine="true" />
     </PreferenceCategory>
 
-    <PreferenceCategory
-        android:key="certificate_settings"
-        android:title="Certificate Settings">
-        <Preference
-            android:key="certificate_path"
-            android:title="Custom TLS Certificate" android:summary="Select your own certificate" android:persistent="true" />
+    <PreferenceCategory android:title="Audio Settings">
         <EditTextPreference
-            android:key="certificate_password"
-            android:title="Certificate Password"
-            android:summary="Optional password for the TLS certificate"
-            android:persistent="true"
-            android:inputType="textPassword" />
-        <Preference
-            android:key="test_certificate"
-            android:title="Test Certificate Setup"
-            android:summary="Validate your certificate configuration"
-            android:persistent="false" />
+            android:key="audio_gain"
+            android:title="Audio Gain"
+            android:summary="Mic amplification: 1=original, 2=2x louder, 4=4x, 8=8x"
+            android:defaultValue="1"
+            android:inputType="number"
+            android:singleLine="true" />
     </PreferenceCategory>
 </PreferenceScreen>
