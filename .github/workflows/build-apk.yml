@@ -26,7 +26,28 @@ jobs:
         run: |
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Build release APK (universal, arm64-v8a)
+      - name: Generate signing key
+        run: |
+          keytool -genkeypair -v \
+            -keystore signing-key.jks \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias key0 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Build, OU=Build, O=Build, L=Build, ST=Build, C=US"
+
+      - name: Create signing.properties
+        run: |
+          cat > signing.properties << 'EOF'
+          storeFile=signing-key.jks
+          storePassword=android
+          keyAlias=key0
+          keyPassword=android
+          EOF
+
+      - name: Build release APK (universal)
         run: |
           ./gradlew clean :app:assembleRelease \
             -PenableAbiSplits=false \
