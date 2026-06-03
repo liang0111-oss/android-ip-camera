@@ -253,7 +253,7 @@ class StreamingServerHelper(
                               keyStore.load(inputStream, finalCertificatePassword)
                               val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
                               keyManagerFactory.init(keyStore, finalCertificatePassword)
-                              val sslContext = SSLContext.getInstance("TLSv1.3")
+                              val sslContext = SSLContext.getInstance("TLSv1.2")
                               sslContext.init(keyManagerFactory.keyManagers, null, null)
                               val sslServerSocketFactory = sslContext.serverSocketFactory
                               (sslServerSocketFactory.createServerSocket(streamPort, 50, bindAddress) as SSLServerSocket).apply {
