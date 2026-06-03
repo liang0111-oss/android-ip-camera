@@ -171,12 +171,37 @@ class StreamingServerHelper(
               serverJob = CoroutineScope(Dispatchers.IO).launch {
               try {
                   val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+                  var effectivePort = streamPort
                   val bindAddress = InetAddress.getByName("0.0.0.0")
 
                   serverSocket = try {
-                      ServerSocket(streamPort, 50, bindAddress).apply {
+                      ServerSocket(effectivePort, 50, bindAddress).apply {
                           reuseAddress = true
                           soTimeout = 30000
+                      }
+                  } catch (e: java.net.BindException) {
+                      // Port in use, try fallback ports
+                      onLog("Port $effectivePort in use, trying alternatives...")
+                      var fallbackSocket: ServerSocket? = null
+                      for (fallbackPort in listOf(8080, 8888, 6667, 6668)) {
+                          try {
+                              fallbackSocket = ServerSocket(fallbackPort, 50, bindAddress).apply {
+                                  reuseAddress = true
+                                  soTimeout = 30000
+                              }
+                              effectivePort = fallbackPort
+                              onLog("Fallback: using port $fallbackPort")
+                              break
+                          } catch (_: Exception) { continue }
+                      }
+                      if (fallbackSocket != null) {
+                          fallbackSocket
+                      } else {
+                          Handler(Looper.getMainLooper()).post {
+                              onLog("CRITICAL: All ports in use")
+                              Toast.makeText(context, "Failed to start server: all ports in use", Toast.LENGTH_LONG).show()
+                          }
+                          return@launch
                       }
                   } catch (e: Exception) {
                       Handler(Looper.getMainLooper()).post {
@@ -185,7 +210,10 @@ class StreamingServerHelper(
                       }
                       return@launch
                   }
-                  onLog("Server started on port $streamPort (HTTP)")
+                  onLog("Server started on port $effectivePort (HTTP)")
+                  Handler(Looper.getMainLooper()).post {
+                      Toast.makeText(context, "Server started on port $effectivePort", Toast.LENGTH_SHORT).show()
+                  }
                   // Clear the starting flag now that server is running
                   synchronized(this@StreamingServerHelper) {
                       isStarting = false

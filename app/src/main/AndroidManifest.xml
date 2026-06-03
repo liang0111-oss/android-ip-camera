@@ -19,6 +19,7 @@
         android:label="Android IP Camera"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
         <activity
             android:name=".activities.MainActivity"
